@@ -75,7 +75,9 @@ def test_validation_non_numeric_and_fenced_json():
 
 def test_graph_end_to_end_with_fake_llm(tmp_path):
     from rfp_eval.graph import run_evaluation
-    from scripts.make_synthetic_pdfs import SUPPLIERS, build, OUT  # noqa: F401
+    import scripts.make_synthetic_pdfs as gen
+    gen.OUT = str(tmp_path)  # don't overwrite the committed sample PDFs
+    SUPPLIERS, build = gen.SUPPLIERS, gen.build
     p = str(tmp_path / "t.db")
     db.init_db(p)
     pdf = open(build("Apex_Systems", SUPPLIERS["Apex_Systems"]), "rb").read()

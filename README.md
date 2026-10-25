@@ -66,6 +66,9 @@ extract_pdf (Document Tool) → evaluate (Evaluation Agent / LLM) ─(bad JSON, 
 ## Database
 `evaluation_criteria(criterion_id, name, description, weight, max_score, is_active)` · `rfp_runs(rfp_run_id, created_at, status, result_json)` · `supplier_results(rfp_run_id, supplier_name, submission_date, experience_rating, absolute_score, ppi, final_rank, result_json)`
 
+## Sample output
+[`samples/sample_run_output.json`](samples/sample_run_output.json) is the full exported result of one completed run with the 4 synthetic suppliers. Final order: Apex Systems → NexaWorks → Orbit Digital → BrightPath Tech.
+
 ## Demo checklist
 1. **Successful run:** upload the 4 PDFs in `data/samples/`, then check the leaderboard, scorecards and JSON download.
 2. **Error case:** in the Criteria tab, deactivate a criterion. The weight total no longer equals 100 and saving is blocked. Or upload two suppliers with the same name, and Evaluate is disabled with an error message.
