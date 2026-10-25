@@ -23,7 +23,7 @@ with tab_criteria:
     all_crit = pd.DataFrame(db.load_criteria(active_only=False))
     all_crit["is_active"] = all_crit["is_active"].astype(bool)
     edited = st.data_editor(
-        all_crit, hide_index=True, use_container_width=True,
+        all_crit, hide_index=True, width="stretch",
         disabled=["criterion_id", "name", "description"],
         column_config={"weight": st.column_config.NumberColumn("weight (%)", min_value=0, max_value=100),
                        "max_score": st.column_config.NumberColumn(min_value=1)},
@@ -48,7 +48,7 @@ def render_result(result: dict):
         "Absolute score": round(s["absolute_score"], 2), "PPI": round(s["ppi"], 2),
         "Submission date": s["submission_date"], "Experience rating": s["experience_rating"],
         "Why this position": s["tie_break_explanation"],
-    } for s in lb]), hide_index=True, use_container_width=True)
+    } for s in lb]), hide_index=True, width="stretch")
 
     st.subheader("Detailed scorecards")
     for s in lb:
@@ -58,7 +58,7 @@ def render_result(result: dict):
                 "Max": r["max_score"], "Benchmark": r["benchmark"], "Gap": r["gap"],
                 "Relative %": round(r["relative_pct"], 1), "Evidence": r["evidence"],
                 "Justification": r["justification"],
-            } for r in s["criteria"]]), hide_index=True, use_container_width=True)
+            } for r in s["criteria"]]), hide_index=True, width="stretch")
             if s.get("overall_summary"):
                 st.markdown(f"**Summary:** {s['overall_summary']}")
             if s.get("risks"):
@@ -80,7 +80,7 @@ with tab_eval:
     active = db.load_criteria()
     st.subheader("Active criteria")
     st.dataframe(pd.DataFrame(active)[["criterion_id", "name", "description", "weight", "max_score"]],
-                 hide_index=True, use_container_width=True)
+                 hide_index=True, width="stretch")
     total = sum(c["weight"] for c in active)
     if abs(total - 100) > 1e-6:
         st.error(f"Active weights total {total:g}%, must be 100%. Fix them in the Criteria tab.")
@@ -142,7 +142,7 @@ with tab_history:
     if not runs:
         st.info("No runs yet.")
     else:
-        st.dataframe(pd.DataFrame(runs), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(runs), hide_index=True, width="stretch")
         pick = st.selectbox("Open run", [r["rfp_run_id"] for r in runs if r["status"] == "COMPLETED"])
         if pick:
             res = db.get_run_result(pick)
