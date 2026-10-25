@@ -14,10 +14,13 @@ streamlit run app.py
 pytest -q                                # business-rule + end-to-end graph tests (no API key needed)
 ```
 
+## Bring your own key (BYOK)
+Enter your OpenAI API key in the sidebar and pick a model. **Test key** checks it without using any tokens. The key is kept only in your browser session and is never written to SQLite, logs or exported JSON. If you leave the field blank, the app uses the owner's `OPENAI_API_KEY` from Streamlit secrets, if one is set. When the key is invalid, the run is blocked before a run ID is created.
+
 ## Deploy (Streamlit Community Cloud)
 1. Push this repo to GitHub.
 2. Go to share.streamlit.io, choose **Create app**, pick this repo and branch `main`, and set the main file to `app.py`.
-3. Open **Advanced settings → Secrets** and add `OPENAI_API_KEY = "sk-..."` (and optionally `OPENAI_MODEL`).
+3. (Optional) Open **Advanced settings → Secrets** and add `OPENAI_API_KEY = "sk-..."` as a default key. Otherwise users bring their own key in the sidebar.
 4. Click Deploy. The SQLite DB is created and seeded automatically at startup. Community Cloud storage is temporary, so run history resets when the app restarts.
 
 ## Architecture

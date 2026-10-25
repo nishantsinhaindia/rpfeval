@@ -40,9 +40,24 @@ def get_model() -> str:
         return os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
 
-def call_llm(messages: list[dict]) -> str:
+def call_llm(messages: list[dict], api_key: str | None = None, model: str | None = None) -> str:
     from langchain_openai import ChatOpenAI
 
-    llm = ChatOpenAI(model=get_model(), temperature=0, api_key=get_api_key(), timeout=90, max_retries=2,
-                     model_kwargs={"response_format": {"type": "json_object"}})
+    llm = ChatOpenAI(model=model or get_model(), temperature=0, api_key=api_key or get_api_key(), timeout=90,
+                     max_retries=2, model_kwargs={"response_format": {"type": "json_object"}})
     return llm.invoke([(m["role"], m["content"]) for m in messages]).content
+
+
+def make_llm(api_key: str, model: str):
+    """Bind a user-supplied key/model into the callable the graph expects."""
+    return lambda messages: call_llm(messages, api_key=api_key, model=model)
+
+
+def check_key(api_key: str) -> str | None:
+    """Return None if the key works, else a short error message. Cheap: lists models, no tokens used."""
+    try:
+        from openai import OpenAI
+        OpenAI(api_key=api_key, timeout=15).models.list()
+        return None
+    except Exception as e:
+        return f"{type(e).__name__}: {getattr(e, 'message', None) or e}"

@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from rfp_eval import db
-from rfp_eval.evaluator import get_api_key
+from rfp_eval.evaluator import check_key, get_api_key, make_llm
 from rfp_eval.graph import run_evaluation
 
 st.set_page_config(page_title="Agentic RFP Evaluation", page_icon="📑", layout="wide")
@@ -14,6 +14,27 @@ db.init_db()
 
 st.title("📑 Agentic RFP Evaluation & Supplier Ranking")
 st.caption("LLM judges proposal content · LangGraph orchestrates · deterministic Python scores, benchmarks and ranks.")
+
+# ---------------- Bring your own key ----------------
+MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1"]
+with st.sidebar:
+    st.header("🔑 Your OpenAI key")
+    st.caption("Bring your own key. It stays in this browser session only — never saved to the database, "
+               "logs or results.")
+    user_key = st.text_input("OpenAI API key", type="password", placeholder="sk-...", key="user_api_key").strip()
+    model = st.selectbox("Model", MODELS, index=0, key="user_model")
+    if user_key and st.button("Test key"):
+        err = check_key(user_key)
+        st.session_state["key_ok"] = err is None
+        st.session_state["key_err"] = err
+    if user_key and st.session_state.get("key_ok") is True:
+        st.success("Key works.")
+    elif user_key and st.session_state.get("key_err"):
+        st.error(f"Key rejected: {st.session_state['key_err'][:200]}")
+    server_key = get_api_key()
+    if not user_key and server_key:
+        st.info("No key entered — using the app owner's configured key.")
+active_key = user_key or get_api_key()
 
 tab_eval, tab_criteria, tab_history = st.tabs(["Evaluate", "Criteria", "Run history"])
 
@@ -114,11 +135,11 @@ with tab_eval:
         st.info("Tip: upload at least 2 suppliers for a meaningful peer comparison.")
     for e in errors:
         st.error(e)
-    if not get_api_key():
-        st.error("OPENAI_API_KEY is not configured (set it in Streamlit secrets or the environment).")
+    if not active_key:
+        st.warning("Enter your OpenAI API key in the sidebar to run an evaluation.")
 
     if st.button("🚀 Evaluate", type="primary",
-                 disabled=not suppliers or bool(errors) or abs(total - 100) > 1e-6 or not get_api_key()):
+                 disabled=not suppliers or bool(errors) or abs(total - 100) > 1e-6 or not active_key):
         with st.status("Running LangGraph workflow…", expanded=True) as status:
             seen = set()
 
@@ -128,7 +149,12 @@ with tab_eval:
                         seen.add(card["supplier_name"])
                         st.write(f"✅ Evaluated {card['supplier_name']}")
 
-            out = run_evaluation(suppliers, on_event=on_event)
+            key_err = check_key(active_key)
+            if key_err:
+                status.update(label="API key rejected", state="error")
+                st.error(f"OpenAI rejected the API key, so no run was created. {key_err[:300]}")
+                st.stop()
+            out = run_evaluation(suppliers, llm=make_llm(active_key, model), on_event=on_event)
             if out.get("status") == "COMPLETED":
                 status.update(label="Evaluation complete", state="complete")
                 st.session_state["last_result"] = out["result"]
