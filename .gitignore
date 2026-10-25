@@ -218,3 +218,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project additions
+*.db
+*.sqlite
+.DS_Store
+.claude/settings.local.json
+
+# Project additions
+*.db
+.DS_Store
+.claude/settings.local.json
