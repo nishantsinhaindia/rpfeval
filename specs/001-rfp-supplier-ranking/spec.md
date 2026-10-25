@@ -30,6 +30,20 @@ this description are incorporated below.
 - Q: Should each run's stored result also keep the AI's original, unmodified responses (both
   attempts, if retried) alongside the cleaned-up scorecard? → A: Yes — store them, show them in run
   details, and include them in the JSON download.
+- Q: When the AI service reports it is temporarily busy (rate limit or short outage), how should
+  the system retry? → A: Up to 3 extra waited retries (about 5, 10, 20 seconds) for busy/outage
+  errors only, not counted as the single evaluation retry; timeouts and bad output still get
+  exactly one retry (FR-014).
+- Q: How much extractable text must a PDF contain to be accepted rather than rejected as scanned
+  or empty? → A: At least 200 non-whitespace characters in the whole file; partly scanned files
+  are accepted with a warning listing the pages that had no text (FR-007).
+- Q: Besides names differing only by letter case or surrounding spaces, what else should count as
+  a duplicate supplier? → A: Names whose inner runs of spaces collapse to the same text, and the
+  same file (byte-identical) uploaded twice in one run under any names — both blocked (FR-007).
+- Q: If one file in a batch is rejected (e.g., a scanned PDF), should the whole batch wait until
+  the user fixes it, or should the system evaluate the files that passed? → A: Standard behaviour
+  (user deferred to the recommendation): Evaluate stays blocked until every rejected file is
+  removed or replaced; at least 2 valid suppliers must then remain (FR-005, FR-007).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -63,6 +77,9 @@ confirm a leaderboard of four ranked suppliers appears under a single new run ID
    experience rating, ordered by rank.
 5. **Given** only one PDF has been uploaded, **When** the user tries to evaluate, **Then** evaluation
    is blocked with a message stating that at least two supplier proposals are required.
+6. **Given** three PDFs where one is rejected (e.g., scanned), **When** the user tries to evaluate,
+   **Then** evaluation is blocked until that file is removed or replaced; if removing it leaves
+   fewer than two valid suppliers, the "at least two" message is shown.
 
 ---
 
@@ -129,6 +146,9 @@ completes, the defects are normalized as specified, and one warning is recorded 
    with warnings.
 6. **Given** the AI scores a criterion 7 out of 10 but gives no evidence, **When** validated,
    **Then** the score stays 7, the evidence reads "no evidence found", and a warning is recorded.
+7. **Given** the AI service answers "busy" twice and then returns a valid response, **When** the
+   supplier is evaluated, **Then** the valid response is used, the evaluation retry is still
+   unused, and two busy-retry warnings are recorded.
 
 ---
 
@@ -218,11 +238,20 @@ section, and matches its intended profile; run all four through the system.
   but equivalent score combinations) are treated as a tie, never ordered by numeric rounding noise.
 - **All criteria deactivated** → active weight total is 0 → evaluation blocked.
 - **Criteria changed during or after a run** → the run keeps using, and displaying, its own snapshot.
-- **Duplicate supplier names** differing only by letter case or surrounding spaces (e.g., "Apex
-  Systems" and "apex systems ") → blocked as duplicates.
+- **Duplicate supplier names** differing only by letter case, surrounding spaces, or the number of
+  inner spaces (e.g., "Apex Systems", "apex systems ", and "Apex  Systems") → blocked as
+  duplicates.
+- **Same file uploaded twice** (byte-identical), even under different supplier names → blocked as a
+  duplicate file, naming both entries.
 - **Invalid files**: a non-PDF file renamed to `.pdf`, a file over 10 MB, a password-protected PDF,
-  or an image-only (scanned) PDF with no extractable text → rejected before evaluation with a
-  message naming the file and the reason.
+  or a scanned/empty PDF yielding fewer than 200 non-whitespace characters of text (e.g., only a
+  "Scanned by…" stamp) → rejected before evaluation with a message naming the file and the reason.
+- **Rejected file in a batch** → Evaluate stays blocked until the file is removed or replaced;
+  it is never silently skipped. If fewer than 2 valid suppliers remain, the "at least two" message
+  is shown.
+- **Partly scanned PDF**: at least 200 characters of text overall but some image-only pages (e.g.,
+  a scanned price table) → accepted; a warning lists the pages without text, and criteria that
+  depend on those pages may end up "not assessed" or "no evidence found".
 - **Submission date of today** → accepted; **tomorrow or later** → rejected.
 - **Very long document** whose text exceeds what can be evaluated in one request → the leading
   portion is evaluated and a "document truncated" warning is recorded for that supplier.
@@ -239,6 +268,9 @@ section, and matches its intended profile; run all four through the system.
   text → the criterion is flagged with a warning.
 - **Slow AI response**: an attempt that receives no response within 90 seconds is treated as a
   failed call and retried once (FR-014).
+- **AI service busy** (rate limit or temporary outage): the same request is resent up to 3 times
+  after waits of about 5, 10, and 20 seconds, without using up the evaluation retry; if still
+  busy, the attempt counts as a failed call (FR-014).
 - **AI service fails for every supplier** → no leaderboard is produced and the run is marked FAILED
   with the reason shown.
 - **Browser session closed or application restarted mid-run** → the run is marked FAILED
@@ -265,18 +297,30 @@ section, and matches its intended profile; run all four through the system.
 **Input and validation**
 
 - **FR-005**: Users MUST be able to upload between 2 and 10 supplier proposal files in a single run.
+  The minimum of 2 counts only valid entries; with fewer than 2, evaluation MUST be blocked with a
+  message stating that at least two supplier proposals are required.
 - **FR-006**: For each uploaded file, users MUST enter a supplier name, a submission date, and a
   historical experience rating; the supplier name MAY be pre-filled from the file name and edited.
 - **FR-007**: System MUST reject, before any evaluation starts and with a specific message naming
   the affected file or supplier (NFR-06):
   - files that are not PDFs;
   - files larger than 10 MB;
-  - PDFs with no extractable text (including password-protected and image-only files);
+  - PDFs that yield fewer than 200 non-whitespace characters of extractable text in total
+    (including password-protected, empty, and image-only/scanned files);
   - missing or blank supplier names;
   - supplier names that duplicate another in the same run (compared case-insensitively, ignoring
-    leading/trailing spaces);
+    leading/trailing spaces, and treating any run of inner spaces as a single space);
+  - the same file (byte-identical content) uploaded more than once in the same run, even under
+    different supplier names;
   - submission dates later than today;
   - experience ratings that are not whole numbers from 1 to 5.
+
+  A PDF that meets the 200-character minimum but has one or more pages with no extractable text
+  (partly scanned) MUST be accepted, and a "pages without text" warning listing those page numbers
+  MUST be recorded for that supplier.
+
+  While any rejected file or invalid entry remains, Evaluate MUST stay blocked until the user
+  removes or replaces it; rejected files are never silently dropped from a run.
 
 **Run orchestration**
 
@@ -291,8 +335,8 @@ section, and matches its intended profile; run all four through the system.
   The AI MUST NOT compute or be asked for totals, benchmarks, gaps, relative %, PPI, tie-breaks, or
   ranks.
 - **FR-011**: System MUST show per-supplier progress while a run is in progress (NFR-05).
-- **FR-012**: A failure affecting one supplier (unreadable document or failed AI response) MUST NOT
-  abort the run; that supplier is flagged with warnings and the remaining suppliers continue
+- **FR-012**: A failure affecting one supplier during the run (a document that passed the FR-007
+  checks but cannot be read, or a failed AI response) MUST NOT abort the run; that supplier is flagged with warnings and the remaining suppliers continue
   (NFR-04).
 - **FR-013**: Run status MUST be one of RUNNING, COMPLETED, or FAILED:
   - COMPLETED when all suppliers have been processed and results stored, even if warnings exist;
@@ -306,6 +350,12 @@ section, and matches its intended profile; run all four through the system.
   snapshot criterion, contains a non-numeric score, contains an out-of-range score, or the AI call
   itself fails, the system MUST retry that supplier's evaluation exactly once. An attempt with no
   response within 90 seconds MUST be treated as a failed call.
+  - **Service busy**: when the AI service reports it is temporarily busy (rate limit or temporary
+    outage), the system MUST wait and resend the same request up to 3 more times, waiting about
+    5, 10, and 20 seconds before each resend. These busy-retries MUST NOT use up the evaluation
+    retry; only if the service is still busy after the third resend does the attempt count as a
+    failed call. Each busy-retry records a warning (FR-016).
+  - No other automatic retries are permitted (including any built into the AI service's client).
 - **FR-015**: After the retry, the system MUST normalize the most recent usable response as follows,
   never crashing the run:
   - missing criterion → score 0, marked "not assessed";
@@ -412,8 +462,8 @@ section, and matches its intended profile; run all four through the system.
 - **AI Attempt Record**: One AI evaluation attempt for one supplier (first attempt or retry).
   Attributes: attempt number, raw response exactly as received or failure reason, and whether it
   was the response used for normalization.
-- **Validation Warning**: A record of a retry, normalization fix, zero benchmark, truncation, or
-  grounding issue. Attributes: supplier (if applicable), criterion (if applicable), issue type,
+- **Validation Warning**: A record of a retry, busy-retry, normalization fix, zero benchmark,
+  truncation, pages without text, or grounding issue. Attributes: supplier (if applicable), criterion (if applicable), issue type,
   original value, applied value, message.
 - **Ranking Result**: Per supplier: absolute score, PPI, final rank, and the tie-break rule that
   separated it from the next-ranked supplier.
@@ -426,16 +476,16 @@ section, and matches its intended profile; run all four through the system.
   proposals — from opening the application to viewing the leaderboard — in under 5 minutes (NFR-08).
 - **SC-002**: A run of the four sample proposals (2–4 pages each) in which no AI retry is needed
   finishes within 3 minutes of clicking Evaluate, in each of 5 consecutive trial runs, with
-  per-supplier progress visible throughout (NFR-05). Runs that need retries may take longer, since
-  each AI attempt may wait up to 90 seconds.
+  per-supplier progress visible throughout (NFR-05). Runs that need retries or busy-retries may
+  take longer, since each AI attempt may wait up to 90 seconds plus about 35 seconds of busy waits.
 - **SC-003**: Recomputing scores and ranking 100 times from the same stored validated scorecards
   yields identical absolute scores, PPIs, and ranks every time (100%) (NFR-01).
 - **SC-004**: For a completed run, a reviewer can reproduce every displayed absolute score and PPI by
   hand using only the scorecard or downloaded JSON (criterion, weight, score, benchmark, and the
   stated rule), with 100% of values matching (NFR-02).
 - **SC-005**: In a test set containing each AI-output defect (malformed output, missing criterion,
-  non-numeric score, out-of-range score, failed call), 100% of runs complete without crashing and
-  each fix produces exactly one warning.
+  non-numeric score, out-of-range score, failed call, service-busy response), 100% of runs
+  complete without crashing and each fix or retry produces exactly one warning.
 - **SC-006**: 100% of invalid inputs listed in FR-007 are rejected before evaluation starts, each
   with a message that identifies the file or supplier and the reason (NFR-06).
 - **SC-007**: For every scored criterion in a sample run, the quoted evidence is found in that
@@ -464,10 +514,12 @@ section, and matches its intended profile; run all four through the system.
 - **Experience rating** is a whole number from 1 to 5. **Submission date** is a calendar date
   (no time); "the future" means later than the application's current date.
 - **Supplier name** uniqueness and the A–Z tie-break are case-insensitive; names are trimmed of
-  leading/trailing spaces.
+  leading/trailing spaces and inner runs of spaces are collapsed to one before storage, comparison,
+  and display.
 - **Display** rounds values to 2 decimal places; stored and exported values keep full precision.
 - **Text extraction** supports text-based PDFs only; scanned/image-only documents (which would need
-  OCR) are out of scope and rejected.
+  OCR) are out of scope and rejected, while partly scanned documents are accepted with a warning
+  (FR-007). Image-only pages are never read.
 - **AI service**: any AI model able to return structured results; credentials are configured by
   whoever deploys the app. The AI is used in its most repeatable (least random) setting.
 - **Run history durability** is bounded by the hosting environment's storage; a platform reset or

@@ -229,3 +229,9 @@ __marimo__/
 *.db
 .DS_Store
 .claude/settings.local.json
+__pycache__/
+*.pyc
+.pytest_cache/
+*.db
+.streamlit/secrets.toml
+.env

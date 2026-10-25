@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SupplierEvaluation",
+  "description": "The JSON object the Evaluation Agent (LLM) is instructed to return for ONE supplier. Treated as untrusted: rfp_eval/tools/validation.py tolerates deviations and records warnings. The LLM must NOT return totals, benchmarks, gaps, relative %, PPI, or ranks.",
+  "type": "object",
+  "required": ["supplier_name", "criteria", "risks", "overall_summary"],
+  "properties": {
+    "supplier_name": { "type": "string", "description": "Ignored; the user-entered name is always used." },
+    "criteria": {
+      "type": "array",
+      "description": "Exactly one entry per criterion_id in the run's criteria snapshot.",
+      "items": {
+        "type": "object",
+        "required": ["criterion_id", "score", "max_score", "justification", "evidence"],
+        "properties": {
+          "criterion_id": { "type": "integer" },
+          "score": { "type": "number", "minimum": 0, "description": "0..max_score of that criterion" },
+          "max_score": { "type": "number" },
+          "justification": { "type": "string" },
+          "evidence": { "type": "string", "description": "Verbatim quote from THIS supplier's document, or empty string if none." }
+        }
+      }
+    },
+    "risks": { "type": "array", "items": { "type": "string" } },
+    "overall_summary": { "type": "string" }
+  },
+  "examples": [
+    {
+      "supplier_name": "Apex Systems",
+      "criteria": [
+        { "criterion_id": 1, "score": 8, "max_score": 10, "justification": "Microservice design with documented integrations.", "evidence": "event-driven integration layer exposing REST and webhook APIs" }
+      ],
+      "risks": ["Total cost is the highest of typical market range."],
+      "overall_summary": "Technically strong, secure, but expensive."
+    }
+  ]
+}
