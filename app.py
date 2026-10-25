@@ -40,7 +40,7 @@ with tab_criteria:
             st.rerun()
 
 
-def render_result(result: dict):
+def render_result(result: dict, key: str):
     lb = result["leaderboard"]
     st.subheader("🏆 Leaderboard")
     st.dataframe(pd.DataFrame([{
@@ -48,7 +48,7 @@ def render_result(result: dict):
         "Absolute score": round(s["absolute_score"], 2), "PPI": round(s["ppi"], 2),
         "Submission date": s["submission_date"], "Experience rating": s["experience_rating"],
         "Why this position": s["tie_break_explanation"],
-    } for s in lb]), hide_index=True, width="stretch")
+    } for s in lb]), hide_index=True, width="stretch", key=f"{key}_lb")
 
     st.subheader("Detailed scorecards")
     for s in lb:
@@ -58,7 +58,8 @@ def render_result(result: dict):
                 "Max": r["max_score"], "Benchmark": r["benchmark"], "Gap": r["gap"],
                 "Relative %": round(r["relative_pct"], 1), "Evidence": r["evidence"],
                 "Justification": r["justification"],
-            } for r in s["criteria"]]), hide_index=True, width="stretch")
+            } for r in s["criteria"]]), hide_index=True, width="stretch",
+                key=f"{key}_sc_{s['final_rank']}")
             if s.get("overall_summary"):
                 st.markdown(f"**Summary:** {s['overall_summary']}")
             if s.get("risks"):
@@ -72,7 +73,8 @@ def render_result(result: dict):
     else:
         st.info("No validation warnings.")
     st.download_button("⬇️ Download complete result (JSON)", json.dumps(result, indent=2),
-                       file_name=f"{result['rfp_run_id']}.json", mime="application/json")
+                       file_name=f"{result['rfp_run_id']}.json", mime="application/json",
+                       key=f"{key}_dl")
 
 
 # ---------------- Evaluate ----------------
@@ -134,7 +136,7 @@ with tab_eval:
                 status.update(label="Evaluation failed", state="error")
                 st.error(out.get("error", "Unknown error"))
     if st.session_state.get("last_result"):
-        render_result(st.session_state["last_result"])
+        render_result(st.session_state["last_result"], key="eval")
 
 # ---------------- History ----------------
 with tab_history:
@@ -147,4 +149,4 @@ with tab_history:
         if pick:
             res = db.get_run_result(pick)
             if res:
-                render_result(res)
+                render_result(res, key="hist")
